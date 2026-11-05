@@ -3,19 +3,17 @@ import sys
 from urllib.parse import urlparse
 import requests
 
-# ألوان للتنسيق في التيرمينال
+# Terminal Colors
 GREEN = "\033[92m"
 RED = "\033[91m"
 YELLOW = "\033[93m"
 BLUE = "\033[94m"
 RESET = "\033[0m"
 
-
 def print_banner():
     print(f"{BLUE}===================================================={RESET}")
     print(f"{GREEN}   Advanced Web Security & Vulnerability Scanner    {RESET}")
     print(f"{BLUE}===================================================={RESET}\n")
-
 
 def clean_target_url(target):
     if not target.startswith("http://") and not target.startswith("https://"):
@@ -26,37 +24,32 @@ def clean_target_url(target):
         domain = domain[4:]
     return target, domain
 
-
 def get_ip_and_active_devices(domain):
-    print(f"{YELLOW}[*] جاري استخراج الـ IP وفحص الأجهزة المترابطة...{RESET}")
+    print(f"{YELLOW}[*] Resolving IP address and checking host info...{RESET}")
     try:
         ip = socket.gethostbyname(domain)
-        print(f" -> IP الموقع الرئيسي: {GREEN}{ip}{RESET}")
+        print(f" -> Target IP: {GREEN}{ip}{RESET}")
 
-        # محاولة التعرف على الأجهزة المرتبطة/الاسم العكسي (Reverse DNS)
         try:
             host_info = socket.gethostbyaddr(ip)
-            print(f" -> الأجهزة/المستضيف المكتشف: {GREEN}{host_info[0]}{RESET}")
+            print(f" -> Host/Server Info: {GREEN}{host_info[0]}{RESET}")
         except Exception:
-            print(
-                f"{RED}[x] تعذر تحديد أجهزة الشبكة الداخلية: الموقع يعمل خلف سيرفر سحابي (Cloud Proxy) أو جدار حماية يخفي تفاصيل السيرفرات الحقيقية.{RESET}"
-            )
+            print(f"{RED}[x] Network devices hidden: Target is protected behind a Cloud Proxy / WAF.{RESET}")
 
         return ip
     except socket.gaierror:
-        print(f"{RED}[!] خطأ: تعذر الوصول إلى عنوان الـ IP للموقع.{RESET}")
+        print(f"{RED}[!] Error: Failed to resolve target IP address.{RESET}")
         return None
 
-
 def scan_ports(ip):
-    print(f"\n{YELLOW}[*] جاري فحص المنافذ (Port Scanning)...{RESET}")
+    print(f"\n{YELLOW}[*] Starting Port Scanning...{RESET}")
     common_ports = {
-        21: "FTP (نقل الملفات)",
-        22: "SSH (التحكم عن بعد)",
-        80: "HTTP (الويب)",
-        443: "HTTPS (الويب المشفر)",
-        3306: "MySQL (قاعدة البيانات)",
-        8080: "HTTP Proxy",
+        21: "FTP (File Transfer)",
+        22: "SSH (Secure Shell)",
+        80: "HTTP (Web)",
+        443: "HTTPS (Secure Web)",
+        3306: "MySQL (Database)",
+        8080: "HTTP Proxy"
     }
 
     open_ports = []
@@ -65,107 +58,81 @@ def scan_ports(ip):
         sock.settimeout(1.0)
         result = sock.connect_ex((ip, port))
         if result == 0:
-            print(f" -> البورت {GREEN}{port}{RESET} ({service}): {GREEN}مفتوح{RESET}")
+            print(f" -> Port {GREEN}{port}{RESET} ({service}): {GREEN}OPEN{RESET}")
             open_ports.append(port)
         sock.close()
 
     if not open_ports:
-        print(f" -> جميع البورتات الشائعة مغلقة أو محمية.")
+        print(f" -> All common ports are closed or filtered.")
     return open_ports
 
-
 def check_waf_and_server(target_url):
-    print(f"\n{YELLOW}[*] جاري فحص نوع السيرفر وجدار الحماية (WAF)...{RESET}")
+    print(f"\n{YELLOW}[*] Analyzing Server and WAF protection...{RESET}")
     try:
         response = requests.get(target_url, timeout=5)
         headers = response.headers
 
-        # كشف نوع السيرفر
-        server = headers.get("Server", "غير معروف / مخفي")
-        print(f" -> نوع السيرفر (Server Stack): {GREEN}{server}{RESET}")
+        server = headers.get('Server', 'Unknown / Hidden')
+        print(f" -> Server Stack: {GREEN}{server}{RESET}")
 
-        # كشف جدار الحماية WAF
         waf_detected = False
         waf_signatures = {
             "cloudflare": "Cloudflare WAF",
             "aws": "AWS WAF",
             "imperva": "Imperva / Incapsula",
             "akamai": "Akamai WAF",
-            "sucuri": "Sucuri WAF",
+            "sucuri": "Sucuri WAF"
         }
 
         for header_key, header_val in headers.items():
             for sig, waf_name in waf_signatures.items():
                 if sig in header_key.lower() or sig in str(header_val).lower():
-                    print(
-                        f" -> جدار الحماية المكتشف (WAF): {GREEN}{waf_name}{RESET}"
-                    )
+                    print(f" -> Detected WAF: {GREEN}{waf_name}{RESET}")
                     waf_detected = True
                     break
 
         if not waf_detected:
-            print(
-                f" -> جدار الحماية: {RED}لم يتم كشف جدار حماية شهير (قد يكون جدار عادي أو غير محمي بالكامل){RESET}"
-            )
+            print(f" -> WAF: {RED}No major WAF signature detected.{RESET}")
 
         return headers
     except requests.RequestException as e:
-        print(f"{RED}[!] تعذر جلب هيدرز الموقع: {e}{RESET}")
+        print(f"{RED}[!] Failed to fetch target headers: {e}{RESET}")
         return {}
 
-
 def analyze_vulnerabilities(headers, open_ports):
-    print(
-        f"\n{YELLOW}[*] تقرير الثغرات الأمنية والنصائح لترقيعها (Vulnerabilities & Solutions):{RESET}"
-    )
+    print(f"\n{YELLOW}[*] Vulnerability Assessment & Remediation Report:{RESET}")
     vulns_found = 0
 
-    # 1. ثغرة غياب Content-Security-Policy
     if "Content-Security-Policy" not in headers:
         vulns_found += 1
-        print(f"\n{RED}[!] ثغرة: غياب هيدر Content-Security-Policy (CSP){RESET}")
-        print(
-            "   - الخطورة: تزيد من احتمال ثغرات الـ Cross-Site Scripting (XSS)."
-        )
-        print(
-            f"   - {GREEN}الحل لترقيع الثغرة:{RESET} قم بإضافة هيدر CSP في السيرفر لتحديد المصادر المسموح بتنفيذ الأكواد منها."
-        )
+        print(f"\n{RED}[!] Vulnerability: Missing Content-Security-Policy (CSP){RESET}")
+        print("   - Risk: Increases susceptibility to Cross-Site Scripting (XSS).")
+        print(f"   - {GREEN}Remediation:{RESET} Implement a strong CSP header on your server.")
 
-    # 2. ثغرة غياب X-Frame-Options
     if "X-Frame-Options" not in headers:
         vulns_found += 1
-        print(f"\n{RED}[!] ثغرة: غياب هيدر X-Frame-Options{RESET}")
-        print(
-            "   - الخطورة: تعريض الموقع لثغرات Clickjacking (تضمين الموقع داخل Iframe خبيث)."
-        )
-        print(
-            f"   - {GREEN}الحل لترقيع الثغرة:{RESET} أضف `X-Frame-Options: SAMEORIGIN` في إعدادات السيرفر."
-        )
+        print(f"\n{RED}[!] Vulnerability: Missing X-Frame-Options{RESET}")
+        print("   - Risk: Exposes the site to Clickjacking attacks.")
+        print(f"   - {GREEN}Remediation:{RESET} Add `X-Frame-Options: SAMEORIGIN` header.")
 
-    # 3. خطورة البورتات المفتوحة والحساسة
     if 21 in open_ports:
         vulns_found += 1
-        print(f"\n{RED}[!] ثغرة: بورت FTP (21) مفتوح لعامة الإنترنت{RESET}")
-        print(
-            "   - الخطورة: نقل البيانات يتم بدون تشفير، مما يعرض بيانات الدخول للاختراق."
-        )
-        print(
-            f"   - {GREEN}الحل لترقيع الثغرة:{RESET} أغلق بورت 21 واستخدم SFTP (بورت 22) التابع لـ SSH."
-        )
+        print(f"\n{RED}[!] Vulnerability: FTP Port (21) is open to the public{RESET}")
+        print("   - Risk: Unencrypted file transfers expose credentials.")
+        print(f"   - {GREEN}Remediation:{RESET} Close port 21 and use SFTP (port 22) via SSH.")
 
     if vulns_found == 0:
-        print(f"{GREEN} -> ممتاز! لم يتم العثور على ثغرات شائعة في الفحص السريع.{RESET}")
-
+        print(f"{GREEN} -> Excellent! No common vulnerabilities found in the quick scan.{RESET}")
 
 def main():
     print_banner()
-    target_input = input("أدخل رابط الموقع للفحص (مثال: example.com): ").strip()
+    target_input = input("Enter target URL (e.g., example.com): ").strip()
     if not target_input:
-        print("لم يتم إدخال رابط!")
+        print("No target provided!")
         return
 
     target_url, domain = clean_target_url(target_input)
-    print(f"\nبدء الفحص الشامل على: {BLUE}{domain}{RESET}\n")
+    print(f"\nInitiating deep scan on: {BLUE}{domain}{RESET}\n")
 
     ip = get_ip_and_active_devices(domain)
     if ip:
@@ -173,6 +140,6 @@ def main():
         headers = check_waf_and_server(target_url)
         analyze_vulnerabilities(headers, open_ports)
 
-
 if __name__ == "__main__":
     main()
+
